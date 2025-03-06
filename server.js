@@ -8,11 +8,30 @@ app.use(cors());
 app.use(express.json());
 
 // 🟢 MongoDB Connection
-mongoose.connect('mongodb://localhost:27017/goout', {
+// mongoose.connect('mongodb://localhost:27017/goout', {
+//     useNewUrlParser: true,
+//     useUnifiedTopology: true,
+// }).then(() => console.log("Connected to MongoDB"))
+//   .catch(err => console.error("MongoDB connection error:", err));
+
+
+
+
+
+
+
+  mongoose.connect('mongodb+srv://eppakayalanaresh08:ZCAAIRx5uDWAz1Oe@cluster0.jmgg6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-}).then(() => console.log("Connected to MongoDB"))
-  .catch(err => console.error("MongoDB connection error:", err));
+})
+.then(() => console.log("Connected to MongoDB Atlas"))
+.catch(err => console.error("MongoDB connection error:", err));
+
+
+
+
+
+
 
 // 🟢 Define MongoDB Schemas
 const studentSchema = new mongoose.Schema({
