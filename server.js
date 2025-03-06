@@ -1,38 +1,70 @@
 const express = require('express');
 const cors = require('cors');
-const mysql = require('mysql');
-const bcrypt = require("bcrypt");
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(cors());
-app.use(express.json()); // Enable JSON parsing
+app.use(express.json());
 
-// Database Connection
-const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: '',
-    database: 'goout'
+// 🟢 MongoDB Connection
+mongoose.connect('mongodb://localhost:27017/goout', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+}).then(() => console.log("Connected to MongoDB"))
+  .catch(err => console.error("MongoDB connection error:", err));
+
+// 🟢 Define MongoDB Schemas
+const studentSchema = new mongoose.Schema({
+    student_id: String,
+    name: String,
+    email: String,
+    mobile: String,
+    password: String,
+    role: String,
 });
 
-db.connect(err => {
-    if (err) {
-        console.error('Database connection failed:', err);
-        return;
+const parentSchema = new mongoose.Schema({
+    student_id: String,
+    parent_name: String,
+    email: String,
+    mobile: String,
+    password: String,
+    role: String,
+});
+
+const lecturerSchema = new mongoose.Schema({
+    name: String,
+    email: String,
+    mobile: String,
+    password: String,
+    role: String,
+});
+
+const requestSchema = new mongoose.Schema({
+    student_id: String,
+    reason: String,
+    status: { type: String, default: 'pending' },
+    created_at: { type: Date, default: Date.now }
+});
+
+// 🟢 MongoDB Models
+const Student = mongoose.model('Student', studentSchema);
+const Parent = mongoose.model('Parent', parentSchema);
+const Lecturer = mongoose.model('Lecturer', lecturerSchema);
+const Request = mongoose.model('Request', requestSchema);
+
+// 🟢 Fetch All Registered Students
+app.get("/", async (req, res) => {
+    try {
+        const students = await Student.find({}, 'student_id');
+        res.json(students);
+    } catch (err) {
+        res.status(500).json({ message: "Error fetching data" });
     }
-    console.log("Connected to MySQL database");
 });
 
-// Fetch All Registered Students
-app.get("/", (req, res) => {
-    const sql = "SELECT student_id FROM student_registration";  // Fixed table name
-    db.query(sql, (err, data) => {
-        if (err) return res.json({ message: "Error fetching data" });
-        return res.json(data);
-    });
-});
-
-// Student Registration API
+// 🟢 Student Registration
 app.post("/api/register", async (req, res) => {
     const { student_id, name, email, mobile, password, role } = req.body;
 
@@ -41,23 +73,16 @@ app.post("/api/register", async (req, res) => {
     }
 
     try {
-        const hashedPassword = await bcrypt.hash(password, 10); // Hash password
-        const sql = "INSERT INTO student_registration (student_id, name, email, mobile, password, role) VALUES (?, ?, ?, ?, ?, ?)";
-        const values = [student_id, name, email, mobile, hashedPassword, role];
-
-        db.query(sql, values, (err, result) => {
-            if (err) {
-                console.error("Insert error:", err);
-                return res.status(500).json({ message: "Database error" });
-            }
-            return res.status(201).json({ message: "Registration successful" });
-        });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newStudent = new Student({ student_id, name, email, mobile, password: hashedPassword, role });
+        await newStudent.save();
+        res.status(201).json({ message: "Registration successful" });
     } catch (err) {
-        return res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Database error" });
     }
 });
 
-// Parent Registration API
+// 🟢 Parent Registration
 app.post("/api/register-parent", async (req, res) => {
     const { student_id, parent_name, email, mobile, password } = req.body;
 
@@ -66,26 +91,21 @@ app.post("/api/register-parent", async (req, res) => {
     }
 
     try {
-        const checkSql = "SELECT * FROM parent_registration WHERE student_id = ?";
-        db.query(checkSql, [student_id], async (err, result) => {
-            if (err) return res.status(500).json({ message: "Database error" });
-            if (result.length > 0) return res.status(400).json({ message: "Parent already registered for this student" });
+        const existingParent = await Parent.findOne({ student_id });
+        if (existingParent) {
+            return res.status(400).json({ message: "Parent already registered for this student" });
+        }
 
-            // Hash the password before inserting
-            const hashedPassword = await bcrypt.hash(password, 10);
-            const insertSql = `INSERT INTO parent_registration (student_id, parent_name, email, mobile, password) VALUES (?, ?, ?, ?, ?)`;
-            const values = [student_id, parent_name, email, mobile, hashedPassword];
-
-            db.query(insertSql, values, (err, result) => {
-                if (err) return res.status(500).json({ message: "Database error" });
-                return res.status(201).json({ message: "Parent registration successful" });
-            });
-        });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newParent = new Parent({ student_id, parent_name, email, mobile, password: hashedPassword });
+        await newParent.save();
+        res.status(201).json({ message: "Parent registration successful" });
     } catch (err) {
-        return res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Database error" });
     }
 });
 
+// 🟢 Lecturer Registration
 app.post("/api/register-lecturer", async (req, res) => {
     const { name, email, mobile, password } = req.body;
 
@@ -95,240 +115,247 @@ app.post("/api/register-lecturer", async (req, res) => {
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = "INSERT INTO lecturer (name, email, mobile, password) VALUES (?, ?, ?, ?)";
-        const values = [name, email, mobile, hashedPassword];
-
-        db.query(sql, values, (err, result) => {
-            if (err) {
-                console.error("Insert error:", err);
-                return res.status(500).json({ message: "Database error" });
-            }
-            return res.status(201).json({ message: "Lecturer registration successful" });
-        });
+        const newLecturer = new Lecturer({ name, email, mobile, password: hashedPassword });
+        await newLecturer.save();
+        res.status(201).json({ message: "Lecturer registration successful" });
     } catch (err) {
-        return res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Database error" });
     }
 });
 
-// Fetch Student IDs NOT registered by parents
-app.get("/api/unregistered-student-ids", (req, res) => {
-    const sql = `
-        SELECT student_id 
-        FROM student_registration 
-        WHERE student_id NOT IN (SELECT student_id FROM parent_registration)
-    `;
 
-    db.query(sql, (err, data) => {
-        if (err) return res.status(500).json({ message: "Database error" });
-        return res.json(data);
-    });
+app.get("/api/unregistered-student-ids", async (req, res) => {
+    try {
+        // Fetch all student IDs from the student_registration collection
+        // const students = await StudentRegistration.find({}, "student_id");
+
+        // // Fetch all student IDs from the parent_registration collection
+        // const registeredParents = await ParentRegistration.find({}, "student_id");
+
+
+        const students = await Student.find({}, "student_id"); 
+const registeredParents = await Parent.find({}, "student_id");
+
+
+        // Convert the parent-registered IDs to a Set for fast lookup
+        const registeredIds = new Set(registeredParents.map(p => p.student_id));
+
+        // Filter students to get only unregistered ones
+        const unregisteredStudents = students.filter(s => !registeredIds.has(s.student_id));
+
+        res.json(unregisteredStudents);
+    } catch (err) {
+        res.status(500).json({ message: "Database error", error: err.message });
+    }
 });
 
-// Function to check login for all roles
-const checkUser = (email, password, callback) => {
-    const tables = [
-        { name: "student_registration", role: "student" },
-        { name: "parent_registration", role: "parent" },
-        { name: "lecturer", role: "lecturer" } 
-    ];
 
-    const checkNext = (index) => {
-        if (index >= tables.length) {
-            return callback(null, null); // User not found in any table
-        }
 
-        const table = tables[index];
-        const query = `SELECT * FROM ${table.name} WHERE email = ?`;
 
-        db.query(query, [email], async (err, results) => {
-            if (err) return callback(err, null);
 
-            if (results.length > 0) {
-                const user = results[0];
-
-                console.log("DB Password:", user.password, "Entered Password:", password);
-
-                const passwordMatch = await bcrypt.compare(password, user.password);
-                
-                if (passwordMatch) {
-                    return callback(null, { role: table.role, user });
-                }
-            }
-            checkNext(index + 1); // Check next table
-        });
-    };
-
-    checkNext(0);
-};
-
-// Login API
-// app.post("/api/login", (req, res) => {
+// // 🟢 Login API
+// app.post("/api/login", async (req, res) => {
 //     const { email, password } = req.body;
 
-//     checkUser(email, password, (err, result) => {
-//         if (err) return res.status(500).json({ success: false, message: "Server error" });
+//     try {
+//         let user = await Student.findOne({ email }) || 
+//                    await Parent.findOne({ email }) || 
+//                    await Lecturer.findOne({ email });
 
-//         if (!result) {
-//             return res.status(401).json({ success: false, message: "Invalid email or password" });
-//         }
+//         if (!user) return res.status(401).json({ success: false, message: "Invalid email or password" });
 
-//         res.json({ success: true, message: "Login successful", role: result.role });
-//     });
+//         const passwordMatch = await bcrypt.compare(password, user.password);
+//         if (!passwordMatch) return res.status(401).json({ success: false, message: "Invalid email or password" });
+
+//         res.json({ success: true, message: "Login successful", role: user.role, student_id: user.student_id || null });
+//     } catch (err) {
+//         res.status(500).json({ success: false, message: "Server error" });
+//     }
 // });
 
 
 
+const checkUser = async (email, password) => {
+    const collections = [
+        { model: Student, role: "student" },
+        { model: Parent, role: "parent" },
+        { model: Lecturer, role: "lecturer" }
+    ];
 
-// Login API
-app.post("/api/login", (req, res) => {
+    for (let { model, role } of collections) {
+        const user = await model.findOne({ email });
+
+        if (user) {
+            const passwordMatch = await bcrypt.compare(password, user.password);
+
+            if (passwordMatch) {
+                console.log(`User found in ${model.collection.name} with role: ${role}`);
+                return { role, user };
+            }
+        }
+    }
+
+    return null; // User not found
+};
+
+
+
+app.post("/api/login", async (req, res) => {
     const { email, password } = req.body;
 
-    checkUser(email, password, (err, result) => {
-        if (err) return res.status(500).json({ success: false, message: "Server error" });
+    try {
+        const result = await checkUser(email, password);
 
         if (!result) {
+            console.log("Login failed: Invalid email or password");
             return res.status(401).json({ success: false, message: "Invalid email or password" });
         }
 
-        // Ensure the user object contains student_id
-        const userData = { 
-            role: result.role,
-            student_id: result.user.student_id  // Extract student_id
-        };
+        console.log("Login successful. Role:", result.role);
 
-        res.json({ success: true, message: "Login successful", ...userData });
-    });
+        // Send response with role and student_id if available
+        res.json({
+            success: true,
+            message: "Login successful",
+            role: result.role,
+            student_id: result.user.student_id || null
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Server error" });
+    }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 // 🟢 Student Submits a Request
-app.post("/api/request", (req, res) => {
+app.post("/api/request", async (req, res) => {
     const { student_id, reason } = req.body;
+
     if (!student_id || !reason) {
         return res.status(400).json({ message: "Student ID and reason are required" });
     }
-    const sql = "INSERT INTO permission_requests (student_id, reason, status) VALUES (?, ?, 'pending')";
-    db.query(sql, [student_id, reason], (err, result) => {
-        if (err) return res.status(500).json({ message: "Database error" });
+
+    try {
+        const newRequest = new Request({ student_id, reason });
+        await newRequest.save();
         res.status(201).json({ message: "Request submitted successfully" });
-    });
-});
-
-// 🟢 Parent Approves (Verify Stage)
-app.post("/api/approve-parent", (req, res) => {
-    const { request_id } = req.body;
-    if (!request_id) {
-        return res.status(400).json({ message: "Request ID is required" });
+    } catch (err) {
+        res.status(500).json({ message: "Database error" });
     }
-    const sql = "UPDATE permission_requests SET status = 'verify' WHERE id = ? AND status = 'pending'";
-    db.query(sql, [request_id], (err, result) => {
-        if (err) return res.status(500).json({ message: "Database error" });
-        res.json({ message: "Request verified by parent" });
-    });
-});
-
-// 🟢 Lecturer Approves (Success Stage)
-// app.post("/api/approve-lecturer", (req, res) => {
-//     const { request_id } = req.body;
-//     if (!request_id) {
-//         return res.status(400).json({ message: "Request ID is required" });
-//     }
-//     const sql = "UPDATE permission_requests SET status = 'success' WHERE id = ? AND status = 'verify'";
-//     db.query(sql, [request_id], (err, result) => {
-//         if (err) return res.status(500).json({ message: "Database error" });
-//         res.json({ message: "Request approved by lecturer" });
-//     });
-// });
-
-
-
-
-
-
-
-app.post("/api/approve-lecturer", (req, res) => {
-    const request_id = req.body.request_id;
-
-    if (!request_id) {
-        return res.status(400).json({ message: "Missing request ID" });
-    }
-
-    // Update request status in MySQL
-    const sql = "UPDATE permission_requests SET status = 'success' WHERE id = ?";
-    db.query(sql, [request_id], (err, result) => {
-        if (err) {
-            console.error("Database error:", err);
-            return res.status(500).json({ message: "Database error" });
-        }
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: "Request not found" });
-        }
-
-        res.json({ message: "Request approved successfully" });
-    });
 });
 
 
-
-
-
-
-
-
-// 🟢 Get Student Requests with Date
-app.get("/api/requests/student/:student_id", (req, res) => {
-    const student_id = req.params.student_id;
-    const sql = "SELECT id, reason, status, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS date FROM permission_requests WHERE student_id = ?";
-    db.query(sql, [student_id], (err, results) => {
-        if (err) return res.status(500).json({ message: "Database error" });
-        res.json(results);
-    });
-});
-
-// 🟢 Get Pending Requests for Parent
-app.get("/api/requests/parent", (req, res) => {
-    const sql = "SELECT id, student_id, reason, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS date FROM permission_requests WHERE status = 'pending'";
-    db.query(sql, (err, results) => {
-        if (err) return res.status(500).json({ message: "Database error" });
-        res.json(results);
-    });
-});
-
-// 🟢 Get Verify Requests for Lecturer
-app.get("/api/requests/lecturer", (req, res) => {
-    const sql = "SELECT id, student_id,reason, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS date FROM permission_requests WHERE status = 'verify'";
-    db.query(sql, (err, results) => {
-        if (err) return res.status(500).json({ message: "Database error" });
-        res.json(results);
-    });
-});
-
-
-
-
-app.get("/api/requests/parent/:student_id", (req, res) => {
-    const student_id = req.params.student_id;
+// 🟢 Get Requests for a Parent Based on Student ID
+app.get("/api/requests/parent/:student_id", async (req, res) => {
+    const { student_id } = req.params;
 
     if (!student_id) {
         return res.status(400).json({ message: "Student ID is required" });
     }
 
-    const sql = `SELECT id, reason, status, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS date 
-                 FROM permission_requests WHERE student_id = ?`;
+    try {
+        // Fetch requests for the given student_id
+        const requests = await Request.find({ student_id }, "id reason status created_at");
 
-    db.query(sql, [student_id], (err, results) => {
-        if (err) {
-            console.error("Database error:", err);
-            return res.status(500).json({ message: "Database error" });
-        }
-
-        if (results.length === 0) {
+        if (requests.length === 0) {
             return res.status(404).json({ message: "No requests found for this student" });
         }
 
-        res.json(results);
-    });
+        // Format the date before sending the response
+        const formattedRequests = requests.map(req => ({
+            id: req._id,  // MongoDB uses _id instead of id
+            reason: req.reason,
+            status: req.status,
+            date: req.created_at.toISOString().slice(0, 16).replace("T", " ") // Format as 'YYYY-MM-DD HH:mm'
+        }));
+
+        res.json(formattedRequests);
+    } catch (err) {
+        console.error("Database error:", err);
+        res.status(500).json({ message: "Database error" });
+    }
+});
+
+
+
+
+
+
+
+
+
+// 🟢 Parent Approves Request
+app.post("/api/approve-parent", async (req, res) => {
+    const { request_id } = req.body;
+
+    if (!request_id) return res.status(400).json({ message: "Request ID is required" });
+
+    try {
+        const request = await Request.findByIdAndUpdate(request_id, { status: 'verify' });
+        if (!request) return res.status(404).json({ message: "Request not found" });
+
+        res.json({ message: "Request verified by parent" });
+    } catch (err) {
+        res.status(500).json({ message: "Database error" });
+    }
+});
+
+
+
+
+
+
+
+
+app.post("/api/accept-request-parent", async (req, res) => {
+    const { request_id } = req.body;
+
+    if (!request_id) {
+        return res.status(400).json({ message: "Request ID is required" });
+    }
+
+    try {
+        const request = await Request.findById(request_id);
+
+        if (!request) {
+            return res.status(404).json({ message: "Request not found" });
+        }
+
+        if (request.status !== "pending") {
+            return res.status(400).json({ message: "Request is already processed" });
+        }
+
+        request.status = "verify";
+        await request.save();
+
+        res.json({ message: "Request accepted by parent" });
+    } catch (err) {
+        res.status(500).json({ message: "Database error" });
+    }
 });
 
 
@@ -342,10 +369,23 @@ app.get("/api/requests/parent/:student_id", (req, res) => {
 
 
 
+// 🟢 Lecturer Approves Request
+app.post("/api/approve-lecturer", async (req, res) => {
+    const { request_id } = req.body;
 
+    if (!request_id) return res.status(400).json({ message: "Request ID is required" });
 
+    try {
+        const request = await Request.findByIdAndUpdate(request_id, { status: 'success' });
+        if (!request) return res.status(404).json({ message: "Request not found" });
 
-// Start Server
+        res.json({ message: "Request approved successfully" });
+    } catch (err) {
+        res.status(500).json({ message: "Database error" });
+    }
+});
+
+// 🟢 Start the Server
 app.listen(8081, () => {
     console.log("Server running on port 8081...");
 });
