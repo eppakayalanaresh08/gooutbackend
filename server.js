@@ -35,7 +35,7 @@ app.use(express.json());
 
 // 🟢 Define MongoDB Schemas
 const studentSchema = new mongoose.Schema({
-    student_id: String,
+    student_id: { type: String, unique: true },
     name: String,
     email: String,
     mobile: String,
@@ -84,6 +84,30 @@ app.get("/", async (req, res) => {
 });
 
 // 🟢 Student Registration
+// app.post("/api/register", async (req, res) => {
+//     const { student_id, name, email, mobile, password, role } = req.body;
+
+//     if (!student_id || !name || !email || !mobile || !password || !role) {
+//         return res.status(400).json({ message: "All fields are required" });
+//     }
+
+//     try {
+//         const hashedPassword = await bcrypt.hash(password, 10);
+//         const newStudent = new Student({ student_id, name, email, mobile, password: hashedPassword, role });
+//         await newStudent.save();
+//         res.status(201).json({ message: "Registration successful" });
+//     } catch (err) {
+//         res.status(500).json({ message: "Database error" });
+//     }
+// });
+
+
+
+
+
+
+
+// 🟢 Student Registration
 app.post("/api/register", async (req, res) => {
     const { student_id, name, email, mobile, password, role } = req.body;
 
@@ -92,6 +116,12 @@ app.post("/api/register", async (req, res) => {
     }
 
     try {
+        // Check if student_id already exists
+        const existingStudent = await Student.findOne({ student_id });
+        if (existingStudent) {
+            return res.status(400).json({ message: "Student ID already exists" });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const newStudent = new Student({ student_id, name, email, mobile, password: hashedPassword, role });
         await newStudent.save();
@@ -100,6 +130,7 @@ app.post("/api/register", async (req, res) => {
         res.status(500).json({ message: "Database error" });
     }
 });
+
 
 // 🟢 Parent Registration
 app.post("/api/register-parent", async (req, res) => {
