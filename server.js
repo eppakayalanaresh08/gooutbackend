@@ -145,11 +145,7 @@ app.post("/api/register-lecturer", async (req, res) => {
 
 app.get("/api/unregistered-student-ids", async (req, res) => {
     try {
-        // Fetch all student IDs from the student_registration collection
-        // const students = await StudentRegistration.find({}, "student_id");
-
-        // // Fetch all student IDs from the parent_registration collection
-        // const registeredParents = await ParentRegistration.find({}, "student_id");
+      
 
 
         const students = await Student.find({}, "student_id"); 
@@ -168,29 +164,6 @@ const registeredParents = await Parent.find({}, "student_id");
     }
 });
 
-
-
-
-
-// // 🟢 Login API
-// app.post("/api/login", async (req, res) => {
-//     const { email, password } = req.body;
-
-//     try {
-//         let user = await Student.findOne({ email }) || 
-//                    await Parent.findOne({ email }) || 
-//                    await Lecturer.findOne({ email });
-
-//         if (!user) return res.status(401).json({ success: false, message: "Invalid email or password" });
-
-//         const passwordMatch = await bcrypt.compare(password, user.password);
-//         if (!passwordMatch) return res.status(401).json({ success: false, message: "Invalid email or password" });
-
-//         res.json({ success: true, message: "Login successful", role: user.role, student_id: user.student_id || null });
-//     } catch (err) {
-//         res.status(500).json({ success: false, message: "Server error" });
-//     }
-// });
 
 
 
@@ -378,6 +351,29 @@ app.post("/api/accept-request-parent", async (req, res) => {
 });
 
 
+app.get("/api/requests/lecturer", async (req, res) => {
+    try {
+        // Fetch requests where status is 'verify'
+        const requests = await Request.find({ status: "verify" }, "student_id reason created_at");
+
+        if (requests.length === 0) {
+            return res.status(404).json({ message: "No requests found for lecturers" });
+        }
+
+        // Format response with date formatting
+        const formattedRequests = requests.map(req => ({
+            id: req._id,  // MongoDB uses _id instead of id
+            student_id: req.student_id,
+            reason: req.reason,
+            date: req.created_at.toISOString().slice(0, 16).replace("T", " ") // Format as 'YYYY-MM-DD HH:mm'
+        }));
+
+        res.json(formattedRequests);
+    } catch (err) {
+        console.error("Database error:", err);
+        res.status(500).json({ message: "Database error" });
+    }
+});
 
 
 
